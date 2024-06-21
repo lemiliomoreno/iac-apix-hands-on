@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nginx-ingress
+  name: dev-sample-nginx-ingress
   namespace: dev-sample-nginx
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
@@ -15,6 +15,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: nginx-service
+                name: dev-sample-nginx-service
                 port:
                   number: 80
