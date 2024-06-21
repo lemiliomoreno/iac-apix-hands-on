@@ -56,9 +56,19 @@ locals {
   prometheus_charts_repo = "https://prometheus-community.github.io/helm-charts"
 
   kube_prometheus_helm_name          = "prometheus-community"
-  kube_prometheus_helm_chart         = "kube-prometheus-stack"
-  kube_prometheus_helm_chart_version = "60.3.0"
-  kube_prometheus_namespace          = "kube-prometheus"
+  kube_prometheus_helm_chart         = "prometheus"
+  kube_prometheus_helm_chart_version = "25.22.0"
+  kube_prometheus_namespace          = "prometheus"
+
+  grafana_charts_repo = "https://grafana.github.io/helm-charts"
+
+  grafana_helm_name          = "grafana"
+  grafana_helm_chart         = "grafana"
+  grafana_helm_chart_version = "8.0.2"
+  grafana_namespace          = "grafana"
+
+  aws_ebs_csi_driver_namespace = "aws-ebs-csi-driver"
+  aws_ebs_csi_driver_service_account = "aws-ebs-csi-driver"
 }
 
 module "vpc" {
@@ -100,6 +110,7 @@ module "eks" {
 
   cluster_addons = {
     coredns = {
+      most_recent = true
       configuration_values = jsonencode({
         computeType = "fargate"
       })
@@ -109,6 +120,10 @@ module "eks" {
     }
     vpc-cni = {
       most_recent = true
+    }
+    aws-ebs-csi-driver = {
+      most_recent              = true
+      service_account_role_arn = "${aws_iam_role.ebs_csi_driver_service_account_role.arn}"
     }
   }
 
@@ -140,6 +155,7 @@ module "eks" {
       selectors = [
         { namespace = "${local.aws_lb_controller_namespace}" },
         { namespace = "${local.kube_prometheus_namespace}" },
+        { namespace = "${local.grafana_namespace}" },
       ]
     }
   }
@@ -176,6 +192,34 @@ resource "aws_iam_role" "load_balancer_controller_service_account_role" {
 resource "aws_iam_role_policy_attachment" "load_balancer_controller_policy_attachment" {
   policy_arn = aws_iam_policy.load_balancer_controller_service_account_policy.arn
   role       = aws_iam_role.load_balancer_controller_service_account_role.name
+}
+
+resource "aws_iam_role" "ebs_csi_driver_service_account_role" {
+  name = "${var.application}-ebs-csi-driver-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRoleWithWebIdentity",
+        Effect = "Allow",
+        Principal = {
+          Federated = "${module.eks.oidc_provider_arn}",
+        },
+        Condition = {
+          StringEquals = {
+            "${module.eks.oidc_provider}:sub" : "system:serviceaccount:${local.aws_ebs_csi_driver_namespace}:${local.aws_ebs_csi_driver_service_account}",
+            "${module.eks.oidc_provider}:aud" : "sts.amazonaws.com",
+          }
+        },
+      },
+    ],
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi_driver_policy_attachment" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.ebs_csi_driver_service_account_role.name
 }
 
 resource "kubernetes_namespace" "ingress_controller_namespace" {
@@ -234,18 +278,64 @@ resource "helm_release" "load_balancer_controller_release" {
   depends_on = [kubernetes_namespace.ingress_controller_namespace]
 }
 
-# resource "kubernetes_namespace" "kube_prometheus_namespace" {
-#   metadata {
-#     name = local.kube_prometheus_namespace
-#   }
-# }
+resource "kubernetes_namespace" "kube_prometheus_namespace" {
+  metadata {
+    name = local.kube_prometheus_namespace
+  }
+}
 
-# resource "helm_release" "kube_prometheus_release" {
-#   name       = local.kube_prometheus_helm_name
-#   repository = local.prometheus_charts_repo
-#   chart      = local.kube_prometheus_helm_chart
-#   namespace  = local.kube_prometheus_namespace
-#   version    = local.kube_prometheus_helm_chart_version
+resource "helm_release" "kube_prometheus_release" {
+  name       = local.kube_prometheus_helm_name
+  repository = local.prometheus_charts_repo
+  chart      = local.kube_prometheus_helm_chart
+  namespace  = local.kube_prometheus_namespace
+  version    = local.kube_prometheus_helm_chart_version
 
-#   depends_on = [kubernetes_namespace.kube_prometheus_namespace]
-# }
+  set {
+    name  = "prometheus-node-exporter.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "alertmanager.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "server.persistentVolume.enabled"
+    value = "false"
+  }
+
+  depends_on = [kubernetes_namespace.kube_prometheus_namespace]
+}
+
+resource "kubernetes_namespace" "grafana_namespace" {
+  metadata {
+    name = local.grafana_namespace
+  }
+}
+
+resource "helm_release" "grafana_release" {
+  name       = local.grafana_helm_name
+  repository = local.grafana_charts_repo
+  chart      = local.grafana_helm_chart
+  namespace  = local.grafana_namespace
+  version    = local.grafana_helm_chart_version
+
+  set {
+    name  = "persistence.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "adminPassword"
+    value = "admin"
+  }
+
+  set {
+    name  = "service.type"
+    value = "NodePort"
+  }
+
+  depends_on = [kubernetes_namespace.grafana_namespace]
+}
