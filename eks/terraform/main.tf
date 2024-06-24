@@ -67,6 +67,13 @@ locals {
   grafana_helm_chart_version = "8.0.2"
   grafana_namespace          = "grafana"
 
+  kubernetes_dashboard_charts_repo = "https://kubernetes.github.io/dashboard/"
+
+  kubernetes_dashboard_helm_name          = "kubernetes-dashboard"
+  kubernetes_dashboard_helm_chart         = "kubernetes-dashboard"
+  kubernetes_dashboard_helm_chart_version = "7.5.0"
+  kubernetes_dashboard_namespace          = "kube-system"
+
   aws_ebs_csi_driver_namespace = "aws-ebs-csi-driver"
   aws_ebs_csi_driver_service_account = "aws-ebs-csi-driver"
 }
@@ -338,4 +345,12 @@ resource "helm_release" "grafana_release" {
   }
 
   depends_on = [kubernetes_namespace.grafana_namespace]
+}
+
+resource "helm_release" "kubernetes_dashboard_release" {
+  name       = local.kubernetes_dashboard_helm_name
+  repository = local.kubernetes_dashboard_charts_repo
+  chart      = local.kubernetes_dashboard_helm_chart
+  namespace  = local.kubernetes_dashboard_namespace
+  version    = local.kubernetes_dashboard_helm_chart_version
 }
