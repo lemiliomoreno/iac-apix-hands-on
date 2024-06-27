@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-django-db-service
+  namespace: dev-sample-postgres
+spec:
+  ports:
+    - port: 5432
+      protocol: TCP
+  type: NodePort
+  selector:
+    app: dev-sample-postgres-deployment

@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-django-api-deployment
+  namespace: dev-sample-postgres
+spec:
+  selector:
+    matchLabels:
+      app: dev-django-api
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: dev-django-api
+    spec:
+      containers:
+        - name: dev-django-api
+          image: 730335497386.dkr.ecr.us-west-2.amazonaws.com/dev-django-api:v1.3.0
+          ports:
+            - containerPort: 80
